@@ -3,8 +3,10 @@ setlocal EnableExtensions DisableDelayedExpansion
 call "%~dp0config.bat"
 for %%I in ("%~dp0.") do set "DIR=%%~fI"
 set "ARCHIVE=%DIR%\%ARCHIVE_NAME%"
-set "ADMIN_USERNAME=admin"
-set "ADMIN_PASSWORD=admin1234"
+
+rem 判定是否首次建库：data\xianyu_data.db 不存在时为全新环境，会按本配置的
+rem ADMIN_USERNAME / ADMIN_PASSWORD 创建管理员账号；已存在则沿用旧密码。
+if exist "%DIR%\data\xianyu_data.db" (set "FRESH_DB=0") else (set "FRESH_DB=1")
 
 if not "%ADMIN_USERNAME%"=="admin" (
     echo [ERROR] This application currently requires the administrator username admin.
@@ -113,7 +115,15 @@ goto wait_ready
 :ready
 echo.
 echo [OK] Application health check passed.
-echo Open http://localhost:%WEB_PORT%/ - username: %ADMIN_USERNAME%
+echo Open http://localhost:%WEB_PORT%/
+if "%FRESH_DB%"=="1" (
+    echo First-time setup: a new admin account was created from config.bat
+    echo   username: %ADMIN_USERNAME%
+    echo   password: %ADMIN_PASSWORD%
+    echo Please change it after login (Settings - Account - Change password).
+) else (
+    echo username: %ADMIN_USERNAME%  (existing database - password unchanged)
+)
 echo Persistent data: "%DIR%"
 echo Health check: http://localhost:%WEB_PORT%/health
 echo Live logs follow. This window will stay open.
@@ -125,7 +135,7 @@ pause
 exit /b 0
 
 :configure_password
-echo [ERROR] Before the first start, edit ADMIN_PASSWORD at the top of this file.
+echo [ERROR] Before the first start, edit ADMIN_PASSWORD at the top of config.bat.
 echo Replace CHANGE_ME with your own non-empty password. Username is admin.
 goto failed
 

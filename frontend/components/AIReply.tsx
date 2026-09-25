@@ -40,7 +40,11 @@ const defaultSettings: AIReplySettings = {
   custom_prompts: '',
 };
 
-const AIReply: React.FC = () => {
+interface AIReplyProps {
+  isActive?: boolean;
+}
+
+const AIReply: React.FC<AIReplyProps> = ({ isActive = true }) => {
   const [accounts, setAccounts] = useState<AccountDetail[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [settings, setSettings] = useState<AIReplySettings>(defaultSettings);
@@ -76,6 +80,18 @@ const AIReply: React.FC = () => {
       .catch(error => notify(error instanceof Error ? error.message : 'AI配置加载失败', 'error'))
       .finally(() => setLoading(false));
   }, [selectedAccountId]);
+
+  // 页面常驻挂载（仅 hidden 切换），绑定账号后切回来不会重新取数。
+  // 切到本页时再拉一次账号列表，确保新绑定的账号立刻出现在下拉里。
+  useEffect(() => {
+    if (!isActive) return;
+    getAccountDetails()
+      .then(data => {
+        setAccounts(data);
+        setSelectedAccountId(current => current || data[0]?.id || '');
+      })
+      .catch(error => notify(error instanceof Error ? error.message : '账号加载失败', 'error'));
+  }, [isActive]);
 
   const updateSetting = <K extends keyof AIReplySettings>(key: K, value: AIReplySettings[K]) => {
     setSettings(current => ({ ...current, [key]: value }));

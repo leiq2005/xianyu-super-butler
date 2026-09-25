@@ -514,10 +514,10 @@ const App: React.FC = () => {
             <Suspense fallback={activeTab === 'cards' ? <PageLoader /> : null}><CardList /></Suspense>
           </section>
           <section hidden={activeTab !== 'auto-reply'}>
-            <Suspense fallback={activeTab === 'auto-reply' ? <PageLoader /> : null}><Keywords mode="reply" /></Suspense>
+            <Suspense fallback={activeTab === 'auto-reply' ? <PageLoader /> : null}><Keywords mode="reply" isActive={activeTab === 'auto-reply'} /></Suspense>
           </section>
           <section hidden={activeTab !== 'ai-reply'}>
-            <Suspense fallback={activeTab === 'ai-reply' ? <PageLoader /> : null}><AIReply /></Suspense>
+            <Suspense fallback={activeTab === 'ai-reply' ? <PageLoader /> : null}><AIReply isActive={activeTab === 'ai-reply'} /></Suspense>
           </section>
           <section hidden={activeTab !== 'messages'} className="h-full min-h-0">
             <Suspense fallback={activeTab === 'messages' ? <PageLoader /> : null}>

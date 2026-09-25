@@ -11,6 +11,7 @@ type KeywordsMode = 'reply' | 'delivery';
 
 interface KeywordsProps {
   mode: KeywordsMode;
+  isActive?: boolean;
 }
 
 interface Keyword {
@@ -37,7 +38,7 @@ interface DefaultReplyForm {
   reply_image_url: string;
 }
 
-const Keywords: React.FC<KeywordsProps> = ({ mode }) => {
+const Keywords: React.FC<KeywordsProps> = ({ mode, isActive = true }) => {
   const [accounts, setAccounts] = useState<AccountDetail[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [activeTab, setActiveTab] = useState<ReplyTabType>('reply');
@@ -94,6 +95,18 @@ const Keywords: React.FC<KeywordsProps> = ({ mode }) => {
       }
     });
   }, [mode]);
+
+  // 页面常驻挂载（仅 hidden 切换），绑定账号后切回来不会重新取数。
+  // 切到本页时再拉一次账号列表，确保新绑定的账号立刻出现在下拉里。
+  useEffect(() => {
+    if (!isActive) return;
+    getAccountDetails().then((data) => {
+      setAccounts(data);
+      if (data && data.length > 0) {
+        setSelectedAccount((current) => current || data[0].id);
+      }
+    });
+  }, [isActive]);
 
   useEffect(() => {
     if (mode === 'reply' && selectedAccount) {

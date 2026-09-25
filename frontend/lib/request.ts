@@ -36,6 +36,17 @@ request.interceptors.response.use(
         /* no-op (SSR) */
       }
     }
+    // 后端（FastAPI）的错误信息在 response.data.detail 里。默认情况下 axios
+    // 的 error.message 只是 "Request failed with status code 400" 这类通用提示，
+    // 真实原因会被吞掉。这里把它透传到 error.message，让各处的 notify(error.message)
+    // 能直接显示后端给出的中文原因（如「未配置API Key」）。
+    const data = error.response?.data as { detail?: unknown } | undefined;
+    if (data?.detail) {
+      const detail = Array.isArray(data.detail)
+        ? data.detail.map((item: any) => item?.msg ?? String(item)).join('；')
+        : String(data.detail);
+      error.message = detail;
+    }
     return Promise.reject(error);
   },
 );
