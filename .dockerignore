@@ -49,3 +49,8 @@ static/uploads/*
 !static/uploads/images/
 static/uploads/images/*
 !static/uploads/images/.gitkeep
+
+# 发布目录（脚本外的运行数据与构建产物，不进构建上下文）
+publish/
+*.tar
+*.tar.partial

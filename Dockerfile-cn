@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm AS base
+FROM public.ecr.aws/docker/library/python:3.11-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -15,7 +15,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
         sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list; \
     fi
 
-FROM node:20-alpine AS frontend-builder
+FROM public.ecr.aws/docker/library/node:20-alpine AS frontend-builder
 
 WORKDIR /frontend
 RUN npm config set registry https://registry.npmmirror.com
@@ -68,7 +68,8 @@ RUN apt-get update && \
         libgl1 \
         libglib2.0-0 \
         xvfb \
-        x11-utils && \
+        x11-utils \
+        nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv

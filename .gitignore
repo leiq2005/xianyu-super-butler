@@ -810,3 +810,11 @@ frontend/coverage/
 # Wrangler 本地缓存（Cloudflare Worker 部署产生）
 .wrangler/
 deploy/.wrangler/
+
+# ==================== publish 发布目录 ====================
+# 只跟踪发布脚本（.bat），忽略运行时数据与构建产物
+publish/**
+!publish/*.bat
+publish/uploads/
+publish/*.tar
+publish/*.tar.partial

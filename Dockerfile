@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bookworm AS base
+FROM public.ecr.aws/docker/library/python:3.11-slim-bookworm AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-FROM node:20-alpine AS frontend-builder
+FROM public.ecr.aws/docker/library/node:20-alpine AS frontend-builder
 
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -52,7 +52,8 @@ RUN apt-get update && \
         libgl1 \
         libglib2.0-0 \
         xvfb \
-        x11-utils && \
+        x11-utils \
+        nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv
