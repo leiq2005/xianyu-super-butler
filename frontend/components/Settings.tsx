@@ -640,13 +640,31 @@ const Settings: React.FC = () => {
               <span className="field-label">默认模型</span>
               <select
                 value={settings.ai_model || 'qwen-plus'}
-                onChange={(event) => setSettings({ ...settings, ai_model: event.target.value })}
+                onChange={(event) => {
+                  const model = event.target.value;
+                  const next = { ...settings, ai_model: model };
+                  // 切换模型时，联动把 API 地址切到对应服务商的默认端点
+                  const providerBaseUrl: Record<string, string> = {
+                    'qwen-plus': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                    'qwen-turbo': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                    'gpt-3.5-turbo': 'https://api.openai.com/v1',
+                    'gpt-4': 'https://api.openai.com/v1',
+                    'deepseek-flash': 'https://api.deepseek.com',
+                    'deepseek-v4-pro': 'https://api.deepseek.com',
+                  };
+                  if (providerBaseUrl[model]) {
+                    next.ai_api_url = providerBaseUrl[model];
+                  }
+                  setSettings(next);
+                }}
                 className="ios-input w-full rounded-md px-3 py-2.5"
               >
                 <option value="qwen-plus">通义千问 Plus</option>
                 <option value="qwen-turbo">通义千问 Turbo</option>
                 <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                 <option value="gpt-4">GPT-4</option>
+                <option value="deepseek-flash">DeepSeek Flash</option>
+                <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
               </select>
             </label>
 
@@ -663,7 +681,7 @@ const Settings: React.FC = () => {
             <div className="lg:col-span-2">
               <NoticeBanner
                 type="info"
-                message="常用兼容服务包括阿里云 DashScope 和 OpenAI。API Key 仅保存在当前系统配置中。"
+                message="常用兼容服务包括阿里云 DashScope、DeepSeek 和 OpenAI。API Key 仅保存在当前系统配置中。"
               />
             </div>
           </div>
