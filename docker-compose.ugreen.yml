@@ -1,0 +1,109 @@
+# ============================================================================
+#  闲鱼智控 —— 绿联 NAS（UGOS Pro / UGOS）专用部署配置
+#  用法：绿联 Docker → 【项目】→【创建】→ 把本文件整段粘进去 → 启动
+# ============================================================================
+#
+#  使用前只需要确认 3 件事，其余保持默认即可：
+#
+#  1. 镜像名
+#     本文件用的是 Windows 上 publish\export.bat 导出的镜像名（来自
+#     publish\config.bat：IMAGE_NAME + IMAGE_TAG = xianyu-butler-source:2.2）。
+#     把 tar 导入绿联后，SSH 里执行 `docker images | grep xianyu` 核对一下；
+#     名字不一致就把下面 image: 改成你实际看到的 REPOSITORY:TAG。
+#
+#     注意：.tar 只是“运输用的包裹”，docker load 之后镜像就登记进绿联的
+#     本地镜像库了，tar 本身可以删掉。yml 里的 image: 是镜像名而不是文件路径，
+#     Docker 只在本地镜像库里按名字找；找不到它才会去网上拉（然后失败）。
+#     所以不要试图把 tar 的路径填到这里，也不要手工往 Docker 的存储目录
+#     （绿联上是 /mnt/docker）里拷文件。
+#
+#  2. 存储路径（本文件全部写成 /volume1/docker/xianyu/...）
+#     UGOS Pro 的共享文件夹真实路径是 /volumeN/<文件夹名>，N 取决于它在哪个
+#     存储空间：绿联【文件管理器】里右键 docker 文件夹 → 属性 →
+#     “存储位置”显示“存储空间1”就是 /volume1/docker，显示“存储空间2”就是
+#     /volume2/docker，以此类推。不一致就把下面 4 行 volume 的左边一起改掉。
+#     保险起见先在 SSH 里跑一次：ls -d /volume*/docker
+#
+#  3. 管理员密码
+#     只在“首次建库”（data 目录里还没有 xianyu_data.db）时生效，
+#     之后必须进后台「设置 → 账号与同步 → 修改登录密码」改，改这里没用。
+#
+#  首次启动请等 2~3 分钟：容器要先起 Xvfb 虚拟显示、初始化 SQLite、
+#  建管理员账号，健康检查的 start_period 给了 90 秒就是为此。
+#
+#  访问地址：http://<绿联NAS的IP>:8083/
+# ============================================================================
+
+services:
+  xianyu-app:
+    # 本地导入的镜像。不要用 latest：那是 registry 里的标签，本地没有。
+    image: xianyu-butler-source:2.2
+    container_name: xianyu-super-butler
+    # 若绿联提示容器名冲突，删掉上面这行，让 compose 自动命名即可。
+    restart: unless-stopped
+
+    ports:
+      # 宿主 8083 → 容器 8080。
+      # 容器内端口固定 8080（global_config.yml 的 AUTO_REPLY.api.port），
+      # 不要改右边；左边宿主端口被占用就换一个，比如 "8084:8080"。
+      # 注意不要写成 "127.0.0.1:8083:8080"，那样只有 NAS 自己能访问，
+      # 局域网里的电脑会打不开。
+      - "8083:8080"
+
+    volumes:
+      # 四个卷都要挂，少一个都会丢数据：
+      #   data    数据库，不挂 = 重建容器账号商品订单全没
+      #   logs    日志
+      #   backups 数据库自动备份
+      #   uploads 上传的商品图片（挂到 /app/static/uploads，别写错）
+      #
+      # 左侧目录不用手动创建：Docker 启动容器时会自动递归建出来（root:root 755），
+      # 本镜像以 root 运行，直接就能写。只有在日志报 Permission denied，
+      # 或加了非 root 的 user: 配置时才需要处理权限。
+      - /volume1/docker/xianyu/data:/app/data
+      - /volume1/docker/xianyu/logs:/app/logs
+      - /volume1/docker/xianyu/backups:/app/backups
+      - /volume1/docker/xianyu/uploads:/app/static/uploads
+
+    environment:
+      TZ: Asia/Shanghai
+
+      # 最关键的一个：不设的话 SQLite 会建在容器内部，重建容器即丢库。
+      DB_PATH: /app/data/xianyu_data.db
+
+      LOG_LEVEL: INFO
+
+      # 默认账号，首次建库时生效，登录后立刻去后台改密码。
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: admin123
+
+      AUTO_REPLY_ENABLED: "true"
+      AUTO_DELIVERY_ENABLED: "true"
+      # AI 回复要连大模型，默认关着；要用再改成 "true" 并配对应的 key。
+      AI_REPLY_ENABLED: "false"
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# ============================================================================
+#  内存限制：本文件故意不写 deploy.resources.limits —— 部分国产 NAS 的
+#  compose 实现会直接忽略或报错。请在绿联【容器】里打开这个容器，
+#  在“资源限制”里把内存上限填 3072 MB（Chromium 冷启动峰值 300~500 MB，
+#  给 2G 有被 OOM 杀掉、反复重启的风险）。
+#
+#  如果启动后日志里出现 Permission denied 或 SQLite 无法写入，
+#  是宿主机目录权限问题，SSH 里执行：
+#      chmod -R 777 /volume1/docker/xianyu
+#
+#  如果绿联提示缺少 version 字段，就在本文件第一行加上：version: "3.8"
+# ============================================================================
