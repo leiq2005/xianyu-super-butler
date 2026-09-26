@@ -6039,7 +6039,7 @@ async def test_ai_reply(cookie_id: str, test_data: dict,
 
         # 检查是否启用AI回复
         if not ai_reply_engine.is_ai_enabled(cookie_id):
-            raise HTTPException(status_code=400, detail='该账号未启用AI回复')
+            raise HTTPException(status_code=400, detail='该账号未启用 AI 回复，请先在 AI 回复页开启并点击保存配置')
 
         # 检查AI设置是否完整
         settings = db_manager.get_ai_reply_settings(cookie_id)
