@@ -1,9 +1,17 @@
 import os
+import sys
 import yaml
 from pathlib import Path
 from typing import Dict, Any
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# 打包成 exe（Nuitka / PyInstaller）后已经没有源码目录，__file__ 指向的位置
+# 里并不存在文件，再往上取两级会落到错误的地方。此时统一以 exe 所在目录作为
+# 项目根：static/、global_config.yml、data/ 全部放在 exe 旁边。
+PROJECT_ROOT = (
+    Path(sys.executable).resolve().parent
+    if getattr(sys, 'frozen', False)
+    else Path(__file__).resolve().parent.parent
+)
 
 class Config:
     """配置管理类

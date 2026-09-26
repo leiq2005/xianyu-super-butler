@@ -533,6 +533,11 @@ def _build_frontend():
         print(f"{_INFO} 容器环境，前端已在镜像构建阶段生成，跳过构建")
         return True
 
+    # 打包成 exe 后前端产物已经随包分发，机器上既没有 npm 也没有 frontend 源码。
+    if getattr(sys, 'frozen', False):
+        print(f"{_INFO} 打包运行模式，前端产物已内置，跳过构建")
+        return True
+
     if not frontend_dir.exists():
         print(f"{_WARN} frontend 目录不存在，跳过前端构建")
         return False
@@ -715,7 +720,13 @@ def _start_api_server():
     # 在后台线程中创建独立事件循环并直接运行 server.serve()
     import uvicorn
     try:
-        config = uvicorn.Config("app.reply_server:app", host=host, port=port, log_level="info")
+        if getattr(sys, 'frozen', False):
+            # 打包成 exe 后没有源码树，字符串形式的 "app.reply_server:app" 要靠
+            # importlib 按文件名找模块，容易落空，这里直接把 ASGI 应用对象传进去。
+            from app.reply_server import app as asgi_app
+            config = uvicorn.Config(asgi_app, host=host, port=port, log_level="info")
+        else:
+            config = uvicorn.Config("app.reply_server:app", host=host, port=port, log_level="info")
         server = uvicorn.Server(config)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

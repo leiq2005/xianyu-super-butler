@@ -818,3 +818,10 @@ publish/**
 publish/uploads/
 publish/*.tar
 publish/*.tar.partial
+
+# ==================== publish-exe EXE 发布目录 ====================
+# 只跟踪发布脚本与文档，忽略构建虚拟环境、Nuitka 中间产物与发布包
+publish-exe/.buildenv/
+publish-exe/.build/
+publish-exe/release/
+publish-exe/__pycache__/

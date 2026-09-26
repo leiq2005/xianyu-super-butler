@@ -10,13 +10,19 @@ import time
 import json
 import os
 import re
+import sys
 import pandas as pd
 import io
 import asyncio
 import sqlite3
 from collections import defaultdict, OrderedDict
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# 同 app/config.py：打包成 exe 后以 exe 所在目录作为项目根。
+PROJECT_ROOT = (
+    Path(sys.executable).resolve().parent
+    if getattr(sys, 'frozen', False)
+    else Path(__file__).resolve().parent.parent
+)
 
 from app import cookie_manager
 from app.db_manager import db_manager
