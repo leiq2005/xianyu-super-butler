@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Order, OrderStatus, Item, AccountDetail } from '../types';
-import { getOrders, syncOrders, syncSingleOrder, manualShipOrder, updateOrder, deleteOrder, importOrders, getItems, syncSoldOrders, getAccountDetails, requireOrderFlower, rateOrders, getSellerFeatureFlags } from '../services/api';
+import { getOrders, syncOrders, syncSingleOrder, manualShipOrder, updateOrder, deleteOrder, importOrders, getItems, syncSoldOrders, getAccountDetails, requireOrderFlower, rateOrders, getSellerFeatureFlags, exportOrders } from '../services/api';
 import { confirmAction, notify } from '../services/feedback';
-import { Search, Truck, RefreshCw, ChevronLeft, ChevronRight, PackageCheck, Edit, Eye, Plus, Save, X, ExternalLink, Trash2, ClipboardList, Flower2, Star } from 'lucide-react';
+import { Search, Truck, RefreshCw, ChevronLeft, ChevronRight, PackageCheck, Edit, Eye, Plus, Save, X, ExternalLink, Trash2, ClipboardList, Flower2, Star, Download, CalendarRange } from 'lucide-react';
 import { EmptyState, PageHeader, PageTabs } from './ui';
+
+// 导出弹窗用的日期工具：<input type="date"> 只认 YYYY-MM-DD
+const toDateInputValue = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const shiftDays = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date;
+};
 
 const StatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
   const styles = {
@@ -53,6 +63,10 @@ const OrderList: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [editingOrder, setEditingOrder] = useState<Partial<Order> | null>(null);
   const [importText, setImportText] = useState('');
@@ -382,6 +396,47 @@ const OrderList: React.FC = () => {
     }
   };
 
+  const openExportModal = () => {
+    // 默认给最近 30 天，用户可快捷切换或直接清空表示不限时间
+    setExportStart(toDateInputValue(shiftDays(-30)));
+    setExportEnd(toDateInputValue(new Date()));
+    setShowExportModal(true);
+  };
+
+  const applyExportRange = (days: number | 'all') => {
+    if (days === 'all') {
+      setExportStart('');
+      setExportEnd('');
+      return;
+    }
+    setExportStart(toDateInputValue(shiftDays(days === 0 ? 0 : -days)));
+    setExportEnd(toDateInputValue(new Date()));
+  };
+
+  const handleExportOrders = async () => {
+    if (exportStart && exportEnd && exportStart > exportEnd) {
+      notify('开始日期不能晚于结束日期');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const count = await exportOrders({
+        start_date: exportStart || undefined,
+        end_date: exportEnd || undefined,
+        cookie_id: accountFilter || undefined,
+        status: filter !== 'all' ? filter : undefined,
+      });
+      setShowExportModal(false);
+      notify(count > 0 ? `已导出 ${count} 条订单` : '订单已导出');
+    } catch (error: any) {
+      console.error('导出订单失败:', error);
+      notify(error?.message || '导出订单失败，请重试');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSyncSingle = async (orderId: string) => {
     setSyncingOrderId(orderId);
     try {
@@ -477,6 +532,15 @@ const OrderList: React.FC = () => {
             >
               <Plus className="w-4 h-4" />
               插入订单
+            </button>
+            <button
+              onClick={openExportModal}
+              disabled={totalCount === 0}
+              className="ios-btn-secondary flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              title={totalCount === 0 ? '暂无订单数据可导出' : '导出订单'}
+            >
+              <Download className="w-4 h-4" />
+              导出订单
             </button>
             <button onClick={handleSync} className="ios-btn-secondary flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm">
                 <Truck className="h-4 w-4" />
@@ -934,6 +998,92 @@ const OrderList: React.FC = () => {
                   className="ios-btn-primary flex-1 rounded-md px-6 py-2.5 text-sm disabled:opacity-50"
                 >
                   导入订单
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Export Modal - 选择导出时间段 */}
+      {showExportModal && createPortal(
+        <div className="modal-overlay">
+          <div className="modal-container" style={{ maxWidth: '480px' }}>
+            <div className="modal-header">
+              <div className="flex items-center justify-between w-full">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">导出订单</h3>
+                  <p className="mt-1 text-xs text-gray-500">按时间段导出订单数据为 Excel 文件。</p>
+                </div>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="rounded-md p-2 hover:bg-gray-100"
+                  aria-label="关闭导出订单"
+                >
+                  <X className="w-5 h-5 text-gray-600" />
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-body space-y-5">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => applyExportRange(0)} className="ios-btn-secondary rounded-md px-3 py-1.5 text-xs">今天</button>
+                <button type="button" onClick={() => applyExportRange(7)} className="ios-btn-secondary rounded-md px-3 py-1.5 text-xs">近7天</button>
+                <button type="button" onClick={() => applyExportRange(30)} className="ios-btn-secondary rounded-md px-3 py-1.5 text-xs">近30天</button>
+                <button type="button" onClick={() => applyExportRange('all')} className="ios-btn-secondary rounded-md px-3 py-1.5 text-xs">全部</button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label" htmlFor="export-start">开始日期</label>
+                  <input
+                    id="export-start"
+                    type="date"
+                    value={exportStart}
+                    onChange={(event) => setExportStart(event.target.value)}
+                    className="ios-input w-full rounded-md px-3 py-2.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="export-end">结束日期</label>
+                  <input
+                    id="export-end"
+                    type="date"
+                    value={exportEnd}
+                    onChange={(event) => setExportEnd(event.target.value)}
+                    className="ios-input w-full rounded-md px-3 py-2.5 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 rounded-md bg-gray-50 px-3 py-2.5">
+                <CalendarRange className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+                <p className="text-xs leading-relaxed text-gray-600">
+                  日期留空表示不限时间。导出按当前筛选条件
+                  {accountFilter ? '、账号筛选' : ''}
+                  {filter !== 'all' ? '、状态筛选' : ''}
+                  执行，数据取自本地已缓存的订单，不会请求闲鱼服务器。
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <div className="flex w-full gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowExportModal(false)}
+                  className="ios-btn-secondary flex-1 rounded-md px-4 py-2.5 text-sm"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportOrders}
+                  disabled={exporting}
+                  className="ios-btn-primary flex-1 rounded-md px-6 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {exporting ? '导出中…' : '确定导出'}
                 </button>
               </div>
             </div>

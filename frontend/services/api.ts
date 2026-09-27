@@ -1,4 +1,4 @@
-import { get, post, put, del } from '../lib/request';
+import request, { get, post, put, del } from '../lib/request';
 import {
   LoginResponse, AccountDetail, Order, PaginatedResponse,
   AdminStats, Card, SystemSettings, ApiResponse, OrderAnalytics,
@@ -166,6 +166,62 @@ export const getOrders = async (
     total_pages: res.total_pages || 1,
     status_counts: res.status_counts
   };
+};
+
+/** 按下单时间区间导出订单 Excel 并触发浏览器下载。数据来自本地库，不请求闲鱼。 */
+export const exportOrders = async (params: {
+  start_date?: string;
+  end_date?: string;
+  cookie_id?: string;
+  status?: string;
+}): Promise<number> => {
+  try {
+    const response = await request.get('/api/orders/export', {
+      params,
+      responseType: 'blob',
+      timeout: 120000,
+    });
+
+    // 文件名从 Content-Disposition 里取，取不到再兜底
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const now = new Date();
+    let filename = `订单导出_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.xlsx`;
+    const disposition = String(response.headers?.['content-disposition'] || '');
+    const matched = /filename\*=UTF-8''([^;]+)/i.exec(disposition) || /filename="?([^";]+)"?/i.exec(disposition);
+    if (matched) {
+      try {
+        filename = decodeURIComponent(matched[1]);
+      } catch {
+        filename = matched[1];
+      }
+    }
+
+    const url = window.URL.createObjectURL(
+      new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    return Number(response.headers?.['x-export-count'] ?? 0);
+  } catch (error: any) {
+    // blob 响应下后端报错时 detail 藏在 Blob 里，这里取出来让上层能提示中文原因
+    const blob = error?.response?.data;
+    if (blob instanceof Blob) {
+      try {
+        const parsed = JSON.parse(await blob.text());
+        throw new Error(parsed?.detail || '导出订单失败');
+      } catch (parseError) {
+        if (parseError instanceof Error && parseError.message) throw parseError;
+        throw new Error('导出订单失败');
+      }
+    }
+    throw error;
+  }
 };
 
 export const getOrderDetail = async (orderId: string): Promise<{ success: boolean; data?: Order }> => {

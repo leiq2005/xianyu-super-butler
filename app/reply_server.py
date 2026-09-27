@@ -7507,6 +7507,145 @@ def get_user_orders(
         raise HTTPException(status_code=500, detail=f"查询订单失败: {str(e)}")
 
 
+@app.get('/api/orders/export')
+def export_orders(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    start_date: Optional[str] = Query(None, description="起始日期 YYYY-MM-DD，留空表示不限"),
+    end_date: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD，留空表示不限"),
+    cookie_id: Optional[str] = Query(None, description="筛选Cookie ID"),
+    status: Optional[str] = Query(None, description="筛选订单状态")
+):
+    """按下单时间区间导出当前用户的订单为 Excel 文件。
+
+    必须注册在 /api/orders/{order_id} 之前，否则会被路径参数吞掉。
+    """
+    try:
+        from datetime import datetime
+        from urllib.parse import quote
+        from app.db_manager import db_manager
+
+        user_id = current_user['user_id']
+
+        # 日期格式校验（前端传的是 <input type="date"> 的值）
+        for value, label in ((start_date, '开始日期'), (end_date, '结束日期')):
+            if value:
+                try:
+                    datetime.strptime(value, '%Y-%m-%d')
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"{label}格式不正确，应为 YYYY-MM-DD")
+        if start_date and end_date and start_date > end_date:
+            raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+
+        user_cookies = db_manager.get_all_cookies(user_id)
+        if cookie_id:
+            if cookie_id not in user_cookies:
+                raise HTTPException(status_code=403, detail="无权限访问该账号")
+            user_cookies = {cookie_id: user_cookies[cookie_id]}
+
+        # 商品标题联查
+        item_titles = {}
+        with db_manager.lock:
+            cursor = db_manager.conn.cursor()
+            cursor.execute('SELECT item_id, item_title FROM item_info')
+            for row in cursor.fetchall():
+                item_titles[row[0]] = row[1]
+
+        status_labels = {
+            'processing': '处理中',
+            'pending_ship': '待发货',
+            'shipped': '已发货',
+            'completed': '已完成',
+            'cancelled': '已取消',
+            'refunding': '退款中',
+        }
+
+        columns = ['订单号', '账号', '商品ID', '商品标题', '买家ID', '规格', '数量', '金额',
+                   '订单状态', '是否议价', '收货人', '收货电话', '收货地址', '下单时间', '更新时间']
+
+        account_names: Dict[str, str] = {}
+        rows = []
+        for cid in user_cookies.keys():
+            if cid not in account_names:
+                detail = db_manager.get_cookie_details(cid) or {}
+                account_names[cid] = detail.get('nickname') or detail.get('remark') or cid
+
+            # 导出不限页数，这里取一个足够大的上限
+            for order in db_manager.get_orders_by_cookie(cid, limit=1000000):
+                created_at = str(order.get('created_at') or '')
+                day = created_at[:10]
+                if start_date and day and day < start_date:
+                    continue
+                if end_date and day and day > end_date:
+                    continue
+
+                order_state = get_order_status(order)
+                if status and order_state != status:
+                    continue
+
+                spec = ' '.join([v for v in [order.get('spec_name'), order.get('spec_value')] if v])
+                rows.append({
+                    '订单号': order.get('order_id', ''),
+                    '账号': account_names.get(cid, cid),
+                    '商品ID': order.get('item_id', ''),
+                    '商品标题': item_titles.get(order.get('item_id'), ''),
+                    '买家ID': order.get('buyer_id', ''),
+                    '规格': spec,
+                    '数量': order.get('quantity', ''),
+                    '金额': order.get('amount', ''),
+                    '订单状态': status_labels.get(order_state, order_state),
+                    '是否议价': '是' if order.get('is_bargain') else '否',
+                    '收货人': order.get('receiver_name', ''),
+                    '收货电话': order.get('receiver_phone', ''),
+                    '收货地址': order.get('receiver_address', ''),
+                    '下单时间': created_at,
+                    '更新时间': str(order.get('updated_at') or ''),
+                })
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="所选时间范围内没有订单数据")
+
+        rows.sort(key=lambda x: x.get('下单时间', ''), reverse=True)
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            pd.DataFrame(rows, columns=columns).to_excel(writer, sheet_name='订单数据', index=False)
+            worksheet = writer.sheets['订单数据']
+            try:
+                from openpyxl.styles import Alignment, Font, PatternFill
+                from openpyxl.utils import get_column_letter
+                header_fill = PatternFill(start_color='F0F0F0', end_color='F0F0F0', fill_type='solid')
+                for index, name in enumerate(columns, start=1):
+                    cell = worksheet.cell(row=1, column=index)
+                    cell.font = Font(bold=True)
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(vertical='center')
+                    width = max([len(str(name)) * 2] + [len(str(row.get(name, ''))) for row in rows[:200]])
+                    worksheet.column_dimensions[get_column_letter(index)].width = min(max(width + 4, 10), 50)
+                worksheet.freeze_panes = 'A2'
+            except Exception as style_error:  # 样式不影响导出结果
+                logger.warning(f"设置订单导出样式失败: {style_error}")
+        output.seek(0)
+
+        filename = f"订单导出_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        encoded_filename = quote(filename.encode('utf-8'))
+
+        log_with_user('info', f"导出订单成功，共 {len(rows)} 条记录 ({start_date or '不限'} ~ {end_date or '不限'})", current_user)
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+                "X-Export-Count": str(len(rows)),
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_with_user('error', f"导出订单失败: {str(e)}", current_user)
+        raise HTTPException(status_code=500, detail=f"导出订单失败: {str(e)}")
+
+
 @app.get('/api/seller-features')
 @app.get('/api/orders/seller-features')  # 兼容旧前端缓存
 async def get_seller_features(current_user: Dict[str, Any] = Depends(get_current_user)):
