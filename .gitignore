@@ -825,3 +825,20 @@ publish-exe/.buildenv/
 publish-exe/.build/
 publish-exe/release/
 publish-exe/__pycache__/
+
+# ==================== static 前端构建产物 ====================
+# static/ 是 Vite 的构建输出目录（frontend/vite.config.ts: outDir = '../static'）。
+# npm run build 会先由 frontend/scripts/clean-build-output.mjs 删掉下面三项再重新生成：
+#   static/index.html   <- frontend/index.html 编译产物
+#   static/assets/      <- Rollup 分包，文件名带内容哈希
+#   static/favicon.svg  <- 拷贝自 frontend/public/favicon.svg
+# 这些内容哈希会因公共 chunk 的变化而级联刷新（改一个公共模块 -> 全部文件名变动），
+# 入库只会让 diff 充满无意义的二进制噪音。
+# Docker（两个 Dockerfile 都有 frontend-builder 阶段）、Start.py 与
+# publish-exe/build.py 都会在需要时自动 npm run build，不依赖这里入库。
+static/index.html
+static/assets/
+static/favicon.svg
+
+# static/xianyu_js_version_2.js 是手工维护的闲鱼页面注入脚本（见 utils/xianyu_utils.py），
+# frontend 下没有对应源头，必须保留跟踪。
