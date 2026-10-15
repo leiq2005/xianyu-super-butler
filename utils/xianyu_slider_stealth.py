@@ -68,6 +68,7 @@ def find_chromium_executable() -> Optional[str]:
         'chrome-linux/chrome',
         'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
         'chrome-mac/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',
+        'chrome-win64/chrome.exe',
         'chrome-win/chrome.exe',
     )
     for root in roots:
@@ -2972,7 +2973,7 @@ class XianyuSliderStealth:
             # 确保使用正确的浏览器版本（避免版本不匹配问题）
             import sys
             from pathlib import Path
-            if getattr(sys, 'frozen', False):
+            if getattr(sys, 'frozen', False) or '__compiled__' in globals():
                 # 如果是打包后的exe，检查exe同目录下的浏览器
                 exe_dir = Path(sys.executable).parent
                 playwright_dir = exe_dir / 'playwright'
@@ -2981,8 +2982,15 @@ class XianyuSliderStealth:
                     chromium_dirs = list(playwright_dir.glob('chromium-*'))
                     # 找到第一个完整的浏览器目录
                     for chromium_dir in chromium_dirs:
-                        chrome_exe = chromium_dir / 'chrome-win' / 'chrome.exe'
-                        if chrome_exe.exists() and chrome_exe.stat().st_size > 0:
+                        chrome_exe = next(
+                            (
+                                chromium_dir / layout / 'chrome.exe'
+                                for layout in ('chrome-win64', 'chrome-win')
+                                if (chromium_dir / layout / 'chrome.exe').is_file()
+                            ),
+                            None,
+                        )
+                        if chrome_exe and chrome_exe.stat().st_size > 0:
                             # 清除旧的环境变量，使用实际存在的浏览器
                             if 'PLAYWRIGHT_BROWSERS_PATH' in os.environ:
                                 old_path = os.environ['PLAYWRIGHT_BROWSERS_PATH']

@@ -20,7 +20,7 @@ from collections import defaultdict, OrderedDict
 # 同 app/config.py：打包成 exe 后以 exe 所在目录作为项目根。
 PROJECT_ROOT = (
     Path(sys.executable).resolve().parent
-    if getattr(sys, 'frozen', False)
+    if getattr(sys, 'frozen', False) or '__compiled__' in globals()
     else Path(__file__).resolve().parent.parent
 )
 

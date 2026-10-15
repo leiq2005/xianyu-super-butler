@@ -58,6 +58,7 @@ _OK = '[OK]'
 _WARN = '[WARN]'
 _ERROR = '[ERROR]'
 _INFO = '[INFO]'
+_IS_PACKAGED = getattr(sys, 'frozen', False) or '__compiled__' in globals()
 
 # ==================== 在导入任何模块之前先迁移数据库 ====================
 def _migrate_database_files_early():
@@ -165,7 +166,7 @@ def _check_and_install_playwright():
     possible_paths = []
     
     # 如果是打包后的exe，优先检查exe同目录
-    if getattr(sys, 'frozen', False):
+    if _IS_PACKAGED:
         exe_dir = Path(sys.executable).parent
         playwright_dir = exe_dir / 'playwright'
         possible_paths.insert(0, playwright_dir)  # 插入到最前面，优先检查
@@ -175,8 +176,15 @@ def _check_and_install_playwright():
             chromium_dirs = list(playwright_dir.glob('chromium-*'))
             if chromium_dirs:
                 chromium_dir = chromium_dirs[0]
-                chrome_exe = chromium_dir / 'chrome-win' / 'chrome.exe'
-                if chrome_exe.exists() and chrome_exe.stat().st_size > 0:
+                chrome_exe = next(
+                    (
+                        chromium_dir / layout / 'chrome.exe'
+                        for layout in ('chrome-win64', 'chrome-win')
+                        if (chromium_dir / layout / 'chrome.exe').is_file()
+                    ),
+                    None,
+                )
+                if chrome_exe and chrome_exe.stat().st_size > 0:
                     print(f"{_OK} 找到已提取的Playwright浏览器: {chrome_exe}")
                     print(f"{_INFO} 浏览器版本: {chromium_dir.name}")
                     # 清除可能存在的旧环境变量，使用实际存在的浏览器
@@ -221,6 +229,7 @@ def _check_and_install_playwright():
     # 各平台的浏览器可执行文件相对路径。
     # 新版 Playwright 在 macOS 上改用 Chrome for Testing，旧版是 Chromium。
     browser_exe_candidates = (
+        Path('chrome-win64') / 'chrome.exe',
         Path('chrome-win') / 'chrome.exe',
         Path('chrome-mac') / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
         Path('chrome-mac-arm64') / 'Chromium.app' / 'Contents' / 'MacOS' / 'Chromium',
@@ -267,7 +276,7 @@ def _check_and_install_playwright():
             pass
     
     # 如果没找到，先尝试从临时目录提取（如果是打包的exe）
-    if not playwright_installed and getattr(sys, 'frozen', False):
+    if not playwright_installed and _IS_PACKAGED:
         try:
             exe_dir = Path(sys.executable).parent
             playwright_dir = exe_dir / 'playwright'
@@ -285,7 +294,14 @@ def _check_and_install_playwright():
                         extracted_count = 0
                         
                         for temp_chromium_dir in temp_chromium_dirs:
-                            temp_chrome_win = temp_chromium_dir / 'chrome-win'
+                            temp_chrome_win = next(
+                                (
+                                    temp_chromium_dir / layout
+                                    for layout in ('chrome-win64', 'chrome-win')
+                                    if (temp_chromium_dir / layout).is_dir()
+                                ),
+                                temp_chromium_dir / 'chrome-win',
+                            )
                             
                             # 检查完整版或 headless_shell 版
                             temp_chrome_exe = temp_chrome_win / 'chrome.exe'
@@ -307,9 +323,9 @@ def _check_and_install_playwright():
                                         
                                         # 验证提取的文件
                                         if temp_chromium_dir.name.startswith('chromium_headless_shell'):
-                                            target_exe = target_chromium_dir / 'chrome-win' / 'headless_shell.exe'
+                                            target_exe = target_chromium_dir / temp_chrome_win.name / 'headless_shell.exe'
                                         else:
-                                            target_exe = target_chromium_dir / 'chrome-win' / 'chrome.exe'
+                                            target_exe = target_chromium_dir / temp_chrome_win.name / 'chrome.exe'
                                         
                                         if target_exe.exists() and target_exe.stat().st_size > 0:
                                             print(f"{_OK} 浏览器文件提取成功: {target_exe}")
@@ -534,7 +550,7 @@ def _build_frontend():
         return True
 
     # 打包成 exe 后前端产物已经随包分发，机器上既没有 npm 也没有 frontend 源码。
-    if getattr(sys, 'frozen', False):
+    if _IS_PACKAGED:
         print(f"{_INFO} 打包运行模式，前端产物已内置，跳过构建")
         return True
 
@@ -720,7 +736,7 @@ def _start_api_server():
     # 在后台线程中创建独立事件循环并直接运行 server.serve()
     import uvicorn
     try:
-        if getattr(sys, 'frozen', False):
+        if _IS_PACKAGED:
             # 打包成 exe 后没有源码树，字符串形式的 "app.reply_server:app" 要靠
             # importlib 按文件名找模块，容易落空，这里直接把 ASGI 应用对象传进去。
             from app.reply_server import app as asgi_app

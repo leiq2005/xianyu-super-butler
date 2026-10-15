@@ -33,6 +33,16 @@ class ChromiumDiscoveryTests(unittest.TestCase):
 
             self.assertEqual(found, str(expected))
 
+    def test_finds_windows_chrome_win64_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            expected = self._make_install(root, "1223", "chrome-win64/chrome.exe")
+
+            with patch.dict(os.environ, {"PLAYWRIGHT_BROWSERS_PATH": str(root)}):
+                found = slider.find_chromium_executable()
+
+            self.assertEqual(found, str(expected))
+
     def test_prefers_newest_revision(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

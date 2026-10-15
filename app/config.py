@@ -9,7 +9,7 @@ from typing import Dict, Any
 # 项目根：static/、global_config.yml、data/ 全部放在 exe 旁边。
 PROJECT_ROOT = (
     Path(sys.executable).resolve().parent
-    if getattr(sys, 'frozen', False)
+    if getattr(sys, 'frozen', False) or '__compiled__' in globals()
     else Path(__file__).resolve().parent.parent
 )
 

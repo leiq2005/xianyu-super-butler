@@ -480,6 +480,9 @@ def assemble(dist):
 # ------------------------------------------------------------------
 def playwright_cache_dirs():
     candidates = []
+    configured_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+    if configured_path and configured_path.lower() not in ("0", "false"):
+        candidates.append(Path(configured_path))
     localappdata = os.environ.get("LOCALAPPDATA")
     if localappdata:
         candidates.append(Path(localappdata) / "ms-playwright")
@@ -516,8 +519,7 @@ def ship_browsers(venv_py):
             copied += 1
 
     if copied == 0:
-        log("  [WARN] 未找到 Chromium，发布包将不含浏览器。")
-        log("         滑块验证、扫码登录会退化为使用系统 Chrome/Edge。")
+        fail("未能将 Chromium 放入发布包。请检查浏览器下载结果及 PLAYWRIGHT_BROWSERS_PATH。")
     else:
         log(f"  已内置 {copied} 个浏览器目录 -> {target}")
 
